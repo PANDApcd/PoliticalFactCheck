@@ -1,0 +1,17 @@
+{
+    "main": {
+        "api_key": "ysjaKCn2rrgdvTXpelbm1yjjD",
+        "api_key_secret": "UYdqG3xlrUhAVt5LI70cyiwxuI6k6S1V4tcK6Q4Or2vDtN53zp",
+        "token": "AAAAAAAAAAAAAAAAAAAAACuPZgEAAAAA64eCrE2urLCmzqxVzMMQqgo31ek%3DRaOnM61vilvlNYRucArmLlk92yxUkXlKZ605pjBs7ecW1dVZ0W"
+    },
+    "backup": {
+        "api_key": "7H0aUphFNnpB7RpKgYLKhFqVj",
+        "api_key_secret": "9OeHAWPozLQb0WoLXLU4WeUjHLtQAhk30VfqHOTzhViWM8VuBR",
+        "token": "AAAAAAAAAAAAAAAAAAAAADWAcAEAAAAA7A3SV5FLjrurL53s1yrRy5hlAGI%3DB6ueE2rVUGTX4TRvUFHKsWiKdVUbiNmNcSrxsukaEt01Vqwjgy"
+    },
+    "backup2": {
+        "api_key": "39fOyoJfyixkDP5Urxd6O82Dy",
+        "api_key_secret": "Y83n2zNFcaqJmKBA0n21Q30LoVox3JuJ3ThVh65RMk39fGKfXk",
+        "token": "AAAAAAAAAAAAAAAAAAAAAF%2B3cwEAAAAA%2BSfnbeFFYcGkwLppibjy9fK0MGI%3DTxnENcBXnKgk91Bx8MgOjXcijsEmQVsZPpTpxHoqsn4zHcOYol"
+    }
+}

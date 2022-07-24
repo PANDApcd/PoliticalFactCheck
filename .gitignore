@@ -1,0 +1,10 @@
+.ipynb_checkpoints
+__pycache__/
+.vscode
+.ipynb_checkpoints
+*.zip
+Data/tmp
+geoinference
+.idea
+*Tweets.csv
+Websites
