@@ -1,10 +1,8 @@
 .ipynb_checkpoints
-__pycache__/
+__pycache__
 .vscode
-.ipynb_checkpoints
 *.zip
-Data/tmp
-geoinference
+.npm
 .idea
 *Tweets.csv
 Websites
