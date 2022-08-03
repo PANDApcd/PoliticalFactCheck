@@ -3,6 +3,7 @@ from itertools import product
 import pandas as pd
 import numpy as np
 from scipy.signal import find_peaks
+from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score
 import altair as alt
 
 
@@ -116,17 +117,31 @@ class PeakDetector(object):
         return peaks_indexes
 
     @staticmethod
-    def plot_peak(df_counts: pd.DataFrame, field: str):
-        df_counts["Counts"] = df_counts[field] / df_counts[field].max()
-        df_counts = df_counts[["Counts", "Date"]]
-        df_counts["Date"] = pd.to_datetime(df_counts["Date"].astype(str))
-        chart = alt.Chart(df_counts).mark_line().encode(
+    def plot_peak(df_count: pd.DataFrame, field: str):
+        df_count["Counts"] = df_count[field] / df_count[field].max()
+        df_count = df_count[["Counts", "Date"]]
+        df_count["Date"] = pd.to_datetime(df_count["Date"].astype(str))
+        chart = alt.Chart(df_count).mark_line().encode(
             y=alt.Y("Counts:Q"),
             x=alt.X("Date:T"),
             tooltip=["Counts:Q", "Date:T"]
         )
         return chart
 
+    @staticmethod
+    def get_metrics(df_count: pd.DataFrame, df_pf: pd.DataFrame) -> pd.DataFrame:
+        metrics = ["f1", "precision", "recall", "accuracy"]
+        metric_dt = dict()
+        df_mf = df_pf[~df_pf["Rate"].str.contains("True")].dropna(subset="Name")
+        df_merged = df_mf.set_index(["Date", "Name"]).merge(df_count.set_index(["Date", "Name"]), how="right", left_index=True, right_index=True)
+        for method, iqr in product(["Tweet", "SusUser", "SusDomain"], [1.5, 3, 4]):
+            metric_dt[(method, iqr)] = list()
+            label = ~df_merged["Rate"].isna()
+            pred = df_merged[f"{method}PeakIQR"] >= iqr
+            for metric in metrics:
+                func = eval(f"{metric}_score")
+                metric_dt[(method, iqr)].append(func(label, pred))
+        return pd.DataFrame(metric_dt, index=metrics).T
 
 if __name__ == "__main__":
     df_cand = pd.read_csv(
