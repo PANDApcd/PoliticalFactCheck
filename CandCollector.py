@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import requests
 import traceback
 from typing import Dict, Iterable, List
@@ -22,8 +23,9 @@ class CandCollector(object):
         "Governor",
         "U.S. House",
     ]
+    year_matcher = re.compile(r"20\d\d")
 
-    def __init__(self, df_cand: pd.DataFrame, states: Iterable[str]):
+    def __init__(self, states: Iterable[str], df_cand: pd.DataFrame=pd.DataFrame()):
         if df_cand.empty:
             df_cand = pd.DataFrame(columns=["Name"])
         self.df_cand = df_cand
@@ -35,20 +37,25 @@ class CandCollector(object):
         res = requests.get(href)
         page = BeautifulSoup(res.text)
         position = ""
-        running = False
-        for p in page.find("div", id="toc", class_="toc").find_all_previous("p"):
+        status = "unknown"
+        year = -float("inf")
+        for p in page.find(
+                "div", id="toc", class_="toc").find_all_previous("p"):
             text = p.text
-            if "is running for" in text or "lost" in text:
-                if not running:
-                    running = "is running for" in text
-                position = "Secretary of State" # The default position is Secretary of State
-                for pos in cls.positions:
-                    if pos in text:
-                        position = pos
-                        break
+            for status_option in ["is running for", "lost", "won", "disqualified"]:
+                if status_option in text:
+                    status = status_option
+                    year = max([year] + [int(y) for y in cls.year_matcher.findall(text)])
+                    # The default position is Secretary of State
+                    position = "Secretary of State"
+                    for pos in cls.positions:
+                        if pos in text:
+                            position = pos
+                            break
+                    break
         contacts = page.findAll(
             "div", {"class": "widget-row value-only white"})
-        info = {"Position": position, "Running": running}
+        info = {"Position": position, "Status": status, "Year": year}
         for contact in contacts:
             if "republican" in contact.text.lower():
                 info["Party"] = "Republican"
@@ -94,16 +101,16 @@ class CandCollector(object):
                     cand_page = BeautifulSoup(cand_page.text)
                     cand_info.extend(self.find_profile(cand_page, state))
                 except Exception:
-                    logger.debug(f"{pos} doesn't exist for state {state}: {traceback.format_exc()}")
+                    logger.debug(
+                        f"{pos} doesn't exist for state {state}: {traceback.format_exc()}")
         return pd.DataFrame(cand_info)
 
 
 if __name__ == "__main__":
-    df_cand = pd.read_csv(
-        "Data/Candidates/Candidates.csv",
-        sep="\t",
-        index_col="Name")
-    df_cand = df_cand.dropna(subset="Position")
     with open("Data/GeoInfo.json", "r") as f:
         states = list(json.loads(f.read())["States"].values())
-    collector = CandCollector(df_cand, states)
+    collector = CandCollector(states)
+    df_cand = collector()
+    col_name = f"Status {pd.Timestamp.now().strftime('%Y%m%d')}"
+    df_cand = df_cand.dropna(subset="Position").rename(columns={"Status": col_name})
+    df_cand.set_index(["Name"]).to_csv("Data/Candidates/Candidates.csv", sep="\t", index_col="Name")

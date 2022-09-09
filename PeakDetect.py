@@ -1,10 +1,15 @@
 from itertools import product
+import warnings
 
 import pandas as pd
+from pandas.core.common import SettingWithCopyWarning
 import numpy as np
 from scipy.signal import find_peaks
 from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score
 import altair as alt
+from torch import dropout
+
+warnings.simplefilter(action='ignore', category=SettingWithCopyWarning)
 
 
 class PeakDetector(object):
@@ -51,7 +56,7 @@ class PeakDetector(object):
     def __call__(self):
         self.add_sus_tweets_count()
         self.add_monthly_count()
-        self.generate_peak()
+        self.df_count = self.generate_peak(df_count)
         df_count = self.df_count
         for col in df_count.columns:
             if not col.endswith("IQR") and col != "Name":
@@ -71,17 +76,17 @@ class PeakDetector(object):
                 self.df_count["Text"])
             self.df_count = self.df_count.reset_index().drop(["Text"], axis=1)
 
-    def add_monthly_count(self):
-        df_month_count = self.df_new_tweets.groupby(
-            ["Name", "Month"]).count()["Text"]
-        self.df_count = self.df_count.set_index(["Name", "Month"])
-        self.df_count = self.df_count.merge(
+    @classmethod
+    def add_monthly_count(cls, df_count: pd.DataFrame) -> pd.DataFrame:
+        if "MonthTweetCount" in df_count.columns:
+            df_count = df_count.drop(["MonthTweetCount"], axis=1) 
+        df_count["Month"] = df_count["Date"] // 100
+        df_month_count = df_count.groupby(["Name", "Month"])["TweetCount"].sum()
+        df_month_count.name = "MonthTweetCount"
+        df_count = df_count.set_index(["Name", "Month"])
+        df_count = df_count.merge(
             df_month_count, how="outer", left_index=True, right_index=True)
-        self.df_count["MonthTweetCount"] = np.where(
-            self.df_count["Text"].isna(),
-            self.df_count["MonthTweetCount"],
-            self.df_count["Text"])
-        self.df_count = self.df_count.reset_index().drop(["Text"], axis=1)
+        return df_count.reset_index()
 
     def count_tweets(self, df_tweets: pd.DataFrame):
         df_tweets = df_tweets[~df_tweets.index.duplicated()]
@@ -91,21 +96,23 @@ class PeakDetector(object):
         df_tweets = df_tweets[df_tweets["Name"].isin(self.df_cand["Name"])]
         return df_tweets
 
-    def generate_peak(self, iqrs=[1.5, 3, 4]) -> pd.DataFrame:
+    @classmethod
+    def generate_peak(cls, df_count: pd.DataFrame, iqrs=[1.5, 3, 4]) -> pd.DataFrame:
         df_ct_list = list()
-
-        for name in self.df_count["Name"].drop_duplicates():
-            df_cand_ct = self.df_count[self.df_count["Name"] == name].reset_index(
+        for name in df_count["Name"].drop_duplicates():
+            df_cand_ct = df_count[df_count["Name"] == name]
+            df_cand_ct = df_cand_ct.reset_index(
                 drop=True)
             for count_type in ["Tweet", "SusUser", "SusDomain"]:
-                for iqr in [1.5, 3, 4]:
-                    for i in self.detect_peak(
+                for iqr in iqrs:
+                    for i in cls.detect_peak(
                         df_cand_ct
                         [f"{count_type}Count"],
                             iqr=iqr):
                         df_cand_ct.at[i, f"{count_type}PeakIQR"] = iqr
             df_ct_list.append(df_cand_ct)
-        self.df_count = pd.concat(df_ct_list).fillna(0).reset_index(drop=True)
+        df_count = pd.concat(df_ct_list).fillna(0).reset_index(drop=True)
+        return cls.add_monthly_count(df_count)
 
     @staticmethod
     def detect_peak(counts: pd.Series, iqr: float = 1.5):
@@ -129,12 +136,28 @@ class PeakDetector(object):
         return chart
 
     @staticmethod
-    def get_metrics(df_count: pd.DataFrame, df_pf: pd.DataFrame) -> pd.DataFrame:
+    def expand_peaks(df_count: pd.DataFrame, slide: int=1):
+        df_count["Peak"] = (df_count["TweetPeakIQR"] > 0) | (df_count["SusUserPeakIQR"] > 0) | (df_count["SusDomainPeakIQR"] > 0)
+        df_counts = list(df_count.groupby(["Name"]))
+        for _, df in df_counts:
+            for i in range(1, slide + 1):
+                df["Peak"] = df["Peak"] | df["Peak"].shift(i).fillna(False) | df["Peak"].shift(-i).fillna(False)
+        return pd.concat([df for _, df in df_counts])
+
+    @staticmethod
+    def get_metrics(
+            df_count: pd.DataFrame, df_pf: pd.DataFrame) -> pd.DataFrame:
         metrics = ["f1", "precision", "recall", "accuracy"]
         metric_dt = dict()
-        df_mf = df_pf[~df_pf["Rate"].str.contains("True")].dropna(subset="Name")
-        df_merged = df_mf.set_index(["Date", "Name"]).merge(df_count.set_index(["Date", "Name"]), how="right", left_index=True, right_index=True)
-        for method, iqr in product(["Tweet", "SusUser", "SusDomain"], [1.5, 3, 4]):
+        df_mf = df_pf[~df_pf["Rate"].str.contains(
+            "True")].dropna(subset="Name")
+        df_merged = df_mf.set_index(
+            ["Date", "Name"]).merge(
+            df_count.set_index(["Date", "Name"]),
+            how="right", left_index=True, right_index=True)
+        for method, iqr in product(
+            ["Tweet", "SusUser", "SusDomain"],
+                [1.5, 3, 4]):
             metric_dt[(method, iqr)] = list()
             label = ~df_merged["Rate"].isna()
             pred = df_merged[f"{method}PeakIQR"] >= iqr
@@ -142,6 +165,7 @@ class PeakDetector(object):
                 func = eval(f"{metric}_score")
                 metric_dt[(method, iqr)].append(func(label, pred))
         return pd.DataFrame(metric_dt, index=metrics).T
+
 
 if __name__ == "__main__":
     df_cand = pd.read_csv(

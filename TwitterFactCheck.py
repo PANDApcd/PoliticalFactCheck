@@ -183,7 +183,7 @@ class TwitterFactCheck(TwitterAPI):
             self, df_cand: pd.DataFrame, start_time: str, end_time: str,
             status=Dict[str, Any]) -> pd.DataFrame:
         status["df_count"] = df_count = list()
-        for i, (name, twitter) in enumerate(df_cand.Twitter.iteritems()):
+        for i, (name, twitter) in enumerate(df_cand["Twitter"].iteritems()):
             status["i"] = i
             status["username"] = username = twitter.split("/")[-1]
             query = f"(from:{username}) OR (@{username})"
@@ -200,15 +200,98 @@ class TwitterFactCheck(TwitterAPI):
             pd.to_datetime(df_count["start"])).strftime("%Y%m%d")
         return df_count.drop(["start", "end"], axis=1)
 
+    def get_cand_count_from_users(
+            self, df_cand: pd.DataFrame, users: pd.Series, start_time: str,
+            end_time: str, status=Dict[str, Any]) -> pd.DataFrame:
+        status["df_count"] = df_count = list()
+        for i, (name, twitter) in enumerate(df_cand["Twitter"].iteritems()):
+            status["i"] = i
+            status["username"] = username = twitter.split("/")[-1]
+            query = ""
+            for j, sus_user in enumerate(users):
+                status["j"] = j
+                if query == "":
+                    query = f"@{username} ((from:{sus_user})"
+                next_query = query + f" OR (from:{sus_user})"
+                if len(next_query) > 950:
+                    try:
+                        df_cand_count = self.count_tweets(
+                            query=f"{query})", start_time=start_time,
+                            end_time=end_time)
+                        df_cand_count["Name"] = name
+                        df_cand_count["SusName"] = sus_user
+                        df_count.append(df_cand_count)
+                    except Exception:
+                        logging.error(f"{name} {traceback.format_exc()}")
+                    query = f"((@{username})) ((from:{sus_user})"
+                else:
+                    query = next_query
+            try:
+                df_cand_count = self.count_tweets(
+                    query=f"{query})", start_time=start_time,
+                    end_time=end_time)
+                df_cand_count["Name"] = name
+                df_cand_count["SusName"] = sus_user
+                df_count.append(df_cand_count)
+            except Exception:
+                logging.error(f"{name} {traceback.format_exc()}")
+
+        status["df_count"] = df_count = pd.concat(df_count).set_index(["Name"])
+        df_count["Date"] = pd.DatetimeIndex(
+            pd.to_datetime(df_count["start"])).strftime("%Y%m%d")
+        return df_count.drop(["start", "end"], axis=1)
+
+    def get_cand_count_from_domain(
+            self, df_cand: pd.DataFrame, domains: pd.Series, start_time: str,
+            end_time: str, status=Dict[str, Any]) -> pd.DataFrame:
+        status["df_count"] = df_count = list()
+        for i, (name, twitter) in enumerate(df_cand["Twitter"].iteritems()):
+            status["i"] = i
+            status["username"] = username = twitter.split("/")[-1]
+            query = ""
+            for j, domain in enumerate(domains):
+                status["j"] = j
+                if query == "":
+                    query = f"@{username} ((url:{domain})"
+                next_query = query + f" OR (url:{domain})"
+                if len(next_query) > 950:
+                    try:
+                        df_domain_count = self.count_tweets(
+                            query=f"{query})", start_time=start_time,
+                            end_time=end_time)
+                        df_domain_count["Name"] = name
+                        df_domain_count["Domain"] = domain
+                        df_count.append(df_domain_count)
+                    except Exception:
+                        logging.error(f"{name} {traceback.format_exc()}")
+                    query = f"((@{username})) ((url:{domain})"
+                else:
+                    query = next_query
+            try:
+                df_domain_count = self.count_tweets(
+                    query=f"{query})", start_time=start_time,
+                    end_time=end_time)
+                df_domain_count["Name"] = name
+                df_domain_count["Domain"] = domain
+                df_count.append(df_domain_count)
+            except Exception:
+                logging.error(f"{name} {traceback.format_exc()}")
+
+        status["df_count"] = df_count = pd.concat(df_count).set_index(["Name"])
+        df_count["Date"] = pd.DatetimeIndex(
+            pd.to_datetime(df_count["start"])).strftime("%Y%m%d")
+        return df_count.drop(["start", "end"], axis=1)
+
     def search_cand_tweets(
             self, df_cand: pd.DataFrame, start_time: str, end_time: str,
-            status=Dict[str, Any]):
+            status=Dict[str, Any]) -> pd.DataFrame:
         status["res"] = res = list()
         for i, (name, row) in enumerate(df_cand.iterrows()):
             status["user"] = user = row.Twitter.split("/")[-1]
             status["i"] = i
             try:
-                tweets = self.get_user_tweets(user=user, start_time=start_time, end_time=end_time)
+                tweets = self.get_user_tweets(
+                    user=user, start_time=start_time, end_time=end_time)
                 if not tweets.empty:
                     tweets["Name"] = user
                     res.append(tweets)

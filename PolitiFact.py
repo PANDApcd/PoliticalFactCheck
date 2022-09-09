@@ -1,13 +1,16 @@
+from datetime import datetime
+import logging
+from multiprocessing.dummy import Pool
+import os
 import requests
 import re
+import time
+import traceback
+from typing import Callable
+
 from bs4 import BeautifulSoup
 import pandas as pd
-from multiprocessing.dummy import Pool
-import traceback
-import logging
-import time
-from typing import Callable
-import os
+
 
 # logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("PolitiFact Logger")
@@ -24,6 +27,10 @@ class PolitiFact(object):
         self.results = list()
         self.complete_work = list()
         self.reinit()
+        extract_str = "|".join(
+            [fr"{datetime(1, i, 1).strftime('%B')}" for i in range(1, 13)]).lower()
+        extract_str = rf'({extract_str})\s+\d+,\s+20\d\d'
+        self.date_extractor = re.compile(extract_str)
 
     def reinit(self):
         if self.is_running:
@@ -39,9 +46,10 @@ class PolitiFact(object):
 
     def get_results(self):
         df = pd.DataFrame(self.results).set_index(["CheckURL"])
+        df["Date"] = df["Setting"].str.lower().apply(
+            lambda x: self.date_extractor.search(x).group())
         df["Date"] = pd.to_datetime(
-            df["CheckTime"]).astype(str).str.replace(
-            "-", "")
+            df["Setting"]).dt.strftime("%Y%m%d").astype(int)
         return df
 
     def run_task(self, func: Callable, kwds):
@@ -198,10 +206,6 @@ if __name__ == "__main__":
         pass
     df = api.get_results()
     path = "Data/PolitiFact.csv"
-    df_cand = pd.read_csv(
-        "Data/Candidates/Candidates.csv",
-        sep="\t").dropna(
-        subset="Position")
 
     if not os.path.isfile(path):
         df["iteration"] = 0
